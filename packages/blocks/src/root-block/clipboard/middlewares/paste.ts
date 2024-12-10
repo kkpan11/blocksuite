@@ -1,5 +1,6 @@
 import type { ParagraphBlockModel } from '@blocksuite/affine-model';
 
+import { referenceToNode } from '@blocksuite/affine-components/rich-text';
 import {
   ParseDocUrlProvider,
   type ParseDocUrlService,
@@ -381,7 +382,7 @@ class PasteTr {
     for (const op of delta) {
       if (op.attributes?.link) {
         let docId = linkToDocId.get(op.attributes.link);
-        if (docId === undefined) {
+        if (!docId) {
           const searchResult = parseDocUrlService.parseDocUrl(
             op.attributes.link
           );
@@ -399,42 +400,54 @@ class PasteTr {
       }
     }
     const newDelta = delta.map(op => {
-      if (needToConvert.has(op)) {
-        const link = op.attributes?.link;
-
-        if (!link) {
-          return { ...op };
-        }
-
-        const pageId = needToConvert.get(op)!;
-        const reference = { pageId, type: 'LinkedPage' };
-
-        const extracted = extractSearchParams(link);
-        const isLinkToNode = Boolean(
-          extracted?.params?.mode &&
-            (extracted.params.blockIds?.length ||
-              extracted.params.elementIds?.length)
-        );
-
-        Object.assign(reference, extracted);
-
-        this.std.getOptional(TelemetryProvider)?.track('LinkedDocCreated', {
-          page: 'doc editor',
-          category: 'pasted link',
-          type: isLinkToNode ? 'block' : 'doc',
-          other: 'existing doc',
-        });
-
-        transformed = true;
-
-        return {
-          ...op,
-          attributes: { reference },
-          insert: ' ',
-        };
+      if (!needToConvert.has(op)) {
+        return { ...op };
       }
 
-      return { ...op };
+      const link = op.attributes?.link;
+
+      if (!link) {
+        return { ...op };
+      }
+
+      const pageId = needToConvert.get(op);
+
+      if (!pageId) {
+        // External link
+        this.std.getOptional(TelemetryProvider)?.track('Link', {
+          page: 'doc editor',
+          category: 'pasted link',
+          other: 'external link',
+          type: 'link',
+        });
+
+        return { ...op };
+      }
+
+      const reference = { pageId, type: 'LinkedPage' };
+
+      const extractedParams = extractSearchParams(link);
+      const isLinkedBlock = extractedParams
+        ? referenceToNode({ pageId, ...extractedParams })
+        : false;
+
+      Object.assign(reference, extractedParams);
+
+      // Internal link
+      this.std.getOptional(TelemetryProvider)?.track('LinkedDocCreated', {
+        page: 'doc editor',
+        category: 'pasted link',
+        other: 'existing doc',
+        type: isLinkedBlock ? 'block' : 'doc',
+      });
+
+      transformed = true;
+
+      return {
+        ...op,
+        attributes: { reference },
+        insert: ' ',
+      };
     });
     return [newDelta, transformed];
   }
