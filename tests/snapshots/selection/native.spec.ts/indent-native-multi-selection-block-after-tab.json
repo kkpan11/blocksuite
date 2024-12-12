@@ -19,6 +19,7 @@
         "xywh": "[0,0,498,92]",
         "background": "--affine-note-background-white",
         "index": "a0",
+        "lockedBySelf": false,
         "hidden": false,
         "displayMode": "both",
         "edgeless": {
@@ -78,6 +79,24 @@
                   "delta": [
                     {
                       "insert": "789"
+                    }
+                  ]
+                }
+              },
+              "children": []
+            },
+            {
+              "type": "block",
+              "id": "5",
+              "flavour": "affine:paragraph",
+              "version": 1,
+              "props": {
+                "type": "text",
+                "text": {
+                  "$blocksuite:internal:text$": true,
+                  "delta": [
+                    {
+                      "insert": "012"
                     }
                   ]
                 }

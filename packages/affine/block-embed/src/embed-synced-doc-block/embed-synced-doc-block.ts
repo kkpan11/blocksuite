@@ -9,6 +9,7 @@ import {
   RefNodeSlotsProvider,
 } from '@blocksuite/affine-components/rich-text';
 import {
+  type AliasInfo,
   type DocMode,
   type EmbedSyncedDocModel,
   NoteDisplayMode,
@@ -154,9 +155,7 @@ export class EmbedSyncedDocBlockComponent extends EmbedBlockComponent<EmbedSynce
     assertExists(syncedDoc);
 
     if (isPageMode) {
-      this.style.width = 'calc(100% + 48px)';
-      this.style.marginLeft = '-24px';
-      this.style.marginRight = '-24px';
+      this.dataset.pageMode = '';
     }
 
     const containerStyleMap = styleMap({
@@ -237,7 +236,7 @@ export class EmbedSyncedDocBlockComponent extends EmbedBlockComponent<EmbedSynce
             })}
           >
             <div class="affine-embed-synced-doc-header">
-              ${icon}
+              <span class="affine-embed-synced-doc-icon">${icon}</span>
               <span class="affine-embed-synced-doc-title">
                 ${this.docTitle}
               </span>
@@ -254,7 +253,7 @@ export class EmbedSyncedDocBlockComponent extends EmbedBlockComponent<EmbedSynce
     width: '100%',
   });
 
-  convertToCard = () => {
+  convertToCard = (aliasInfo?: AliasInfo) => {
     const { doc, caption } = this.model;
 
     const parent = doc.getParent(this.model);
@@ -263,7 +262,7 @@ export class EmbedSyncedDocBlockComponent extends EmbedBlockComponent<EmbedSynce
 
     doc.addBlock(
       'affine:embed-linked-doc',
-      { caption, ...this.referenceInfo },
+      { caption, ...this.referenceInfo, ...aliasInfo },
       parent,
       index
     );

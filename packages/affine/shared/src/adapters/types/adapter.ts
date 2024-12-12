@@ -10,7 +10,7 @@ import {
   type NodeProps,
 } from '@blocksuite/store';
 
-import type { AffineTextAttributes } from '../types/index.js';
+import type { AffineTextAttributes } from '../../types/index.js';
 
 export const isBlockSnapshotNode = (node: unknown): node is BlockSnapshot =>
   BlockSnapshotSchema.safeParse(node).success;
@@ -23,6 +23,7 @@ export type DeltaASTConverterOptions = {
   trim?: boolean;
   pre?: boolean;
   pageMap?: Map<string, string>;
+  removeLastBr?: boolean;
 };
 
 export type AdapterContext<
@@ -37,6 +38,7 @@ export type AdapterContext<
   deltaConverter: TConverter;
   textBuffer: TextBuffer;
   assets?: AssetsManager;
+  pageMap?: Map<string, string>;
   updateAssetIds?: (assetsId: string) => void;
 };
 
