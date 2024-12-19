@@ -18,6 +18,7 @@ export {
   ConnectorEndpointLocations,
   ConnectorEndpointLocationsOnTriangle,
   ConnectorPathGenerator,
+  PathGenerator,
 } from './managers/connector-manager.js';
 export { CanvasRenderer } from './renderer/canvas-renderer.js';
 export * from './renderer/elements/group/consts.js';
@@ -58,7 +59,6 @@ export {
   NODE_HORIZONTAL_SPACING,
   NODE_VERTICAL_SPACING,
 } from './utils/mindmap/layout.js';
-export { LayoutableMindmapElementModel } from './utils/mindmap/utils.js';
 export { RoughCanvas } from './utils/rough/canvas.js';
 
 import {

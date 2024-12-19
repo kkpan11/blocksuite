@@ -9,6 +9,7 @@ import {
   GroupElementModel,
   type LocalConnectorElementModel,
 } from '@blocksuite/affine-model';
+import { ThemeProvider } from '@blocksuite/affine-shared/services';
 import {
   almostEqual,
   assertEquals,
@@ -31,6 +32,7 @@ import {
   toRadian,
   Vec,
 } from '@blocksuite/global/utils';
+import { effect } from '@preact/signals-core';
 
 import { Overlay } from '../renderer/overlay.js';
 import { AStarRunner } from '../utils/a-star.js';
@@ -822,6 +824,10 @@ function renderRect(
 export class ConnectionOverlay extends Overlay {
   static override overlayName = 'connection';
 
+  private _emphasisColor: string;
+
+  private _themeDisposer: (() => void) | null = null;
+
   highlightPoint: IVec | null = null;
 
   points: IVec[] = [];
@@ -832,12 +838,28 @@ export class ConnectionOverlay extends Overlay {
 
   constructor(gfx: GfxController) {
     super(gfx);
+    this._emphasisColor = this._getEmphasisColor();
+    this._setupThemeListener();
   }
 
   private _findConnectablesInViews() {
     const gfx = this.gfx;
     const bound = gfx.viewport.viewportBounds;
     return gfx.getElementsByBound(bound).filter(ele => ele.connectable);
+  }
+
+  private _getEmphasisColor(): string {
+    return getComputedStyle(this.gfx.std.host).getPropertyValue(
+      '--affine-text-emphasis-color'
+    );
+  }
+
+  private _setupThemeListener(): void {
+    const themeService = this.gfx.std.get(ThemeProvider);
+    this._themeDisposer = effect(() => {
+      themeService.theme$;
+      this._emphasisColor = this._getEmphasisColor();
+    });
   }
 
   _clearRect() {
@@ -852,13 +874,17 @@ export class ConnectionOverlay extends Overlay {
     this._clearRect();
   }
 
+  override dispose() {
+    this._themeDisposer?.();
+    if (!this._renderer) return;
+    this._renderer.removeOverlay(this);
+    this._renderer = null;
+  }
+
   override render(ctx: CanvasRenderingContext2D): void {
     const zoom = this.gfx.viewport.zoom;
     const radius = 5 / zoom;
-    const color = getComputedStyle(this.gfx.std.host).getPropertyValue(
-      '--affine-text-emphasis-color'
-    );
-
+    const color = this._emphasisColor;
     ctx.globalAlpha = 0.6;
     let lineWidth = 1 / zoom;
     if (this.sourceBounds) {
@@ -1009,14 +1035,126 @@ export class ConnectionOverlay extends Overlay {
   }
 }
 
-export class ConnectorPathGenerator {
+export class PathGenerator {
   protected _aStarRunner: AStarRunner | null = null;
 
+  protected _prepareOrthogonalConnectorInfo(
+    connectorInfo: OrthogonalConnectorInput
+  ): [
+    IVec,
+    IVec,
+    IVec,
+    IVec,
+    Bound | null,
+    Bound | null,
+    Bound | null,
+    Bound | null,
+  ] {
+    const { startBound, endBound, startPoint, endPoint } = connectorInfo;
+
+    const [startOffset, endOffset] = computeOffset(startBound, endBound);
+    const [nextStartPoint, lastEndPoint] = computeNextStartEndpoint(
+      startPoint,
+      endPoint,
+      startBound,
+      endBound,
+      startOffset,
+      endOffset
+    );
+    const expandStartBound = startBound
+      ? startBound.expand(
+          startOffset[0],
+          startOffset[1],
+          startOffset[2],
+          startOffset[3]
+        )
+      : null;
+    const expandEndBound = endBound
+      ? endBound.expand(endOffset[0], endOffset[1], endOffset[2], endOffset[3])
+      : null;
+
+    return [
+      startPoint,
+      endPoint,
+      nextStartPoint,
+      lastEndPoint,
+      startBound,
+      endBound,
+      expandStartBound,
+      expandEndBound,
+    ];
+  }
+
+  generateOrthogonalConnectorPath(input: OrthogonalConnectorInput): IVec[] {
+    const info = this._prepareOrthogonalConnectorInfo(input);
+    const [startPoint, endPoint, nextStartPoint, lastEndPoint] = info;
+    const [, , , , startBound, endBound, expandStartBound, expandEndBound] =
+      info;
+    const blocks = [];
+    const expandBlocks = [];
+    startBound && blocks.push(startBound.clone());
+    endBound && blocks.push(endBound.clone());
+    expandStartBound && expandBlocks.push(expandStartBound.clone());
+    expandEndBound && expandBlocks.push(expandEndBound.clone());
+
+    if (
+      startBound &&
+      endBound &&
+      startBound.isPointInBound(endPoint) &&
+      endBound.isPointInBound(startPoint)
+    ) {
+      return getDirectPath(startPoint, endPoint);
+    }
+
+    if (startBound && expandStartBound?.isPointInBound(endPoint, 0)) {
+      return getDirectPath(startPoint, endPoint);
+    }
+
+    if (endBound && expandEndBound?.isPointInBound(startPoint, 0)) {
+      return getDirectPath(startPoint, endPoint);
+    }
+
+    const points = computePoints(
+      startPoint,
+      endPoint,
+      nextStartPoint,
+      lastEndPoint,
+      startBound,
+      endBound,
+      expandStartBound,
+      expandEndBound
+    );
+    const finalPoints = points[0];
+    const [, startPointV3, endPointV3, nextStartPointV3, lastEndPointV3] =
+      points;
+
+    adjustStartEndPoint(startPointV3, endPointV3, startBound, endBound);
+    this._aStarRunner = new AStarRunner(
+      finalPoints,
+      nextStartPointV3,
+      lastEndPointV3,
+      startPointV3,
+      endPointV3,
+      blocks,
+      expandBlocks
+    );
+    this._aStarRunner.run();
+    const path = this._aStarRunner.path;
+    if (!endBound) path.pop();
+    if (!startBound) path.shift();
+
+    return mergePath(path);
+  }
+}
+
+export class ConnectorPathGenerator extends PathGenerator {
   constructor(
     private options: {
       getElementById: (id: string) => GfxModel | null;
     }
-  ) {}
+  ) {
+    super();
+  }
 
   static updatePath(
     connector: ConnectorElementModel | LocalConnectorElementModel,
@@ -1263,114 +1401,6 @@ export class ConnectorPathGenerator {
     }
 
     return null;
-  }
-
-  private _prepareOrthogonalConnectorInfo(
-    connectorInfo: OrthogonalConnectorInput
-  ): [
-    IVec,
-    IVec,
-    IVec,
-    IVec,
-    Bound | null,
-    Bound | null,
-    Bound | null,
-    Bound | null,
-  ] {
-    const { startBound, endBound, startPoint, endPoint } = connectorInfo;
-
-    const [startOffset, endOffset] = computeOffset(startBound, endBound);
-    const [nextStartPoint, lastEndPoint] = computeNextStartEndpoint(
-      startPoint,
-      endPoint,
-      startBound,
-      endBound,
-      startOffset,
-      endOffset
-    );
-    const expandStartBound = startBound
-      ? startBound.expand(
-          startOffset[0],
-          startOffset[1],
-          startOffset[2],
-          startOffset[3]
-        )
-      : null;
-    const expandEndBound = endBound
-      ? endBound.expand(endOffset[0], endOffset[1], endOffset[2], endOffset[3])
-      : null;
-
-    return [
-      startPoint,
-      endPoint,
-      nextStartPoint,
-      lastEndPoint,
-      startBound,
-      endBound,
-      expandStartBound,
-      expandEndBound,
-    ];
-  }
-
-  generateOrthogonalConnectorPath(input: OrthogonalConnectorInput): IVec[] {
-    const info = this._prepareOrthogonalConnectorInfo(input);
-    const [startPoint, endPoint, nextStartPoint, lastEndPoint] = info;
-    const [, , , , startBound, endBound, expandStartBound, expandEndBound] =
-      info;
-    const blocks = [];
-    const expandBlocks = [];
-    startBound && blocks.push(startBound.clone());
-    endBound && blocks.push(endBound.clone());
-    expandStartBound && expandBlocks.push(expandStartBound.clone());
-    expandEndBound && expandBlocks.push(expandEndBound.clone());
-
-    if (
-      startBound &&
-      endBound &&
-      startBound.isPointInBound(endPoint) &&
-      endBound.isPointInBound(startPoint)
-    ) {
-      return getDirectPath(startPoint, endPoint);
-    }
-
-    if (startBound && expandStartBound?.isPointInBound(endPoint, 0)) {
-      return getDirectPath(startPoint, endPoint);
-    }
-
-    if (endBound && expandEndBound?.isPointInBound(startPoint, 0)) {
-      return getDirectPath(startPoint, endPoint);
-    }
-
-    const points = computePoints(
-      startPoint,
-      endPoint,
-      nextStartPoint,
-      lastEndPoint,
-      startBound,
-      endBound,
-      expandStartBound,
-      expandEndBound
-    );
-    const finalPoints = points[0];
-    const [, startPointV3, endPointV3, nextStartPointV3, lastEndPointV3] =
-      points;
-
-    adjustStartEndPoint(startPointV3, endPointV3, startBound, endBound);
-    this._aStarRunner = new AStarRunner(
-      finalPoints,
-      nextStartPointV3,
-      lastEndPointV3,
-      startPointV3,
-      endPointV3,
-      blocks,
-      expandBlocks
-    );
-    this._aStarRunner.run();
-    const path = this._aStarRunner.path;
-    if (!endBound) path.pop();
-    if (!startBound) path.shift();
-
-    return mergePath(path);
   }
 
   hasRelatedElement(

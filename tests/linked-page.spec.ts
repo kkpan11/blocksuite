@@ -106,6 +106,7 @@ test.describe('reference node', () => {
       page,
       `
 <affine:paragraph
+  prop:collapsed={false}
   prop:text="@"
   prop:type="text"
 />`,
@@ -151,6 +152,7 @@ test.describe('reference node', () => {
       page,
       `
 <affine:paragraph
+  prop:collapsed={false}
   prop:text={
     <>
       <text
@@ -174,6 +176,7 @@ test.describe('reference node', () => {
       page,
       `
 <affine:paragraph
+  prop:collapsed={false}
   prop:type="text"
 />`,
       paragraphId
@@ -233,6 +236,7 @@ test.describe('reference node', () => {
 
     const snapshot = `
 <affine:paragraph
+  prop:collapsed={false}
   prop:text={
     <>
       <text
@@ -302,6 +306,7 @@ test.describe('reference node', () => {
 
     const snapshot = `
 <affine:paragraph
+  prop:collapsed={false}
   prop:text={
     <>
       <text
@@ -367,6 +372,7 @@ test.describe('reference node', () => {
 
     const snapshot = `
 <affine:paragraph
+  prop:collapsed={false}
   prop:text={
     <>
       <text
@@ -397,6 +403,7 @@ test.describe('reference node', () => {
       page,
       `
 <affine:paragraph
+  prop:collapsed={false}
   prop:text="1432"
   prop:type="text"
 />`,
@@ -409,6 +416,7 @@ test.describe('reference node', () => {
       page,
       `
 <affine:paragraph
+  prop:collapsed={false}
   prop:text="1432"
   prop:type="text"
 />`,
@@ -757,6 +765,7 @@ test('should [[Selected text]] converted to linked page', async ({ page }) => {
     page,
     `
 <affine:paragraph
+  prop:collapsed={false}
   prop:text={
     <>
       <text
@@ -828,7 +837,7 @@ test('linked doc can be dragged from note to surface top level block', async ({
   await dragBlockToPoint(page, '9', { x: 200, y: 200 });
 
   await waitNextFrame(page);
-  await assertParentBlockFlavour(page, '10', 'affine:surface');
+  await assertParentBlockFlavour(page, '9', 'affine:surface');
 });
 
 // Aliases
@@ -1147,4 +1156,65 @@ test.describe('Customize linked doc title and description', () => {
       linkedDocBlock.locator('.affine-embed-linked-doc-content-note.alias')
     ).toHaveText('This is a new description');
   });
+
+  // Embed View
+  test.fixme(
+    'should automatically switch to card view and set a custom title and description on edgeless',
+    async ({ page }) => {
+      await enterPlaygroundRoom(page);
+      await initEmptyEdgelessState(page);
+      await focusRichText(page);
+      await createAndConvertToEmbedLinkedDoc(page);
+
+      await switchEditorMode(page);
+      await page.mouse.dblclick(450, 450);
+
+      await dragBlockToPoint(page, '9', { x: 200, y: 200 });
+
+      await waitNextFrame(page);
+
+      const toolbar = page.locator('editor-toolbar');
+      await toolbar.getByRole('button', { name: 'Switch view' }).click();
+      await toolbar.getByRole('button', { name: 'Embed view' }).click();
+
+      await waitNextFrame(page);
+
+      await toolbar.getByRole('button', { name: 'Edit' }).click();
+
+      await waitNextFrame(page);
+      const editModal = page.locator('embed-card-edit-modal');
+      const saveButton = editModal.getByRole('button', { name: 'Save' });
+
+      // title alias
+      await type(page, 'page0-title0');
+      await page.keyboard.press('Tab');
+      // description alias
+      await type(page, 'This is a new description');
+
+      // saves aliases
+      await saveButton.click();
+
+      await waitNextFrame(page);
+
+      const syncedDocBlock = page.locator(
+        'affine-embed-edgeless-synced-doc-block'
+      );
+
+      await expect(syncedDocBlock).toBeHidden();
+
+      const linkedDocBlock = page.locator(
+        'affine-embed-edgeless-linked-doc-block'
+      );
+
+      await expect(linkedDocBlock).toBeVisible();
+
+      const linkedDocBlockTitle = linkedDocBlock.locator(
+        '.affine-embed-linked-doc-content-title-text'
+      );
+      await expect(linkedDocBlockTitle).toHaveText('page0-title0');
+      await expect(
+        linkedDocBlock.locator('.affine-embed-linked-doc-content-note.alias')
+      ).toHaveText('This is a new description');
+    }
+  );
 });

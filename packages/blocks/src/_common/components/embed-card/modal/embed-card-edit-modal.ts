@@ -1,6 +1,9 @@
 import type { AliasInfo } from '@blocksuite/affine-model';
-import type { BlockComponent, EditorHost } from '@blocksuite/block-std';
-import type { BlockProps } from '@blocksuite/store';
+import type {
+  BlockComponent,
+  BlockStdScope,
+  EditorHost,
+} from '@blocksuite/block-std';
 
 import {
   EmbedLinkedDocBlockComponent,
@@ -15,6 +18,11 @@ import {
   EmbedLinkedDocModel,
   EmbedSyncedDocModel,
 } from '@blocksuite/affine-model';
+import {
+  type LinkEventType,
+  type TelemetryEvent,
+  TelemetryProvider,
+} from '@blocksuite/affine-shared/services';
 import { FONT_SM, FONT_XS } from '@blocksuite/affine-shared/styles';
 import { unsafeCSSVarV2 } from '@blocksuite/affine-shared/theme';
 import {
@@ -125,11 +133,14 @@ export class EmbedCardEditModal extends SignalWatcher(
     .row.actions .button:disabled {
       pointer-events: none;
       color: ${unsafeCSSVarV2('text/disable')};
-      background: ${unsafeCSSVarV2('button/disable')};
     }
     .row.actions .button.save {
       color: ${unsafeCSSVarV2('button/pureWhiteText')};
       background: ${unsafeCSSVarV2('button/primary')};
+    }
+    .row.actions .button[disabled].save,
+    .row.actions .button:disabled.save {
+      opacity: 0.5;
     }
   `;
 
@@ -151,52 +162,66 @@ export class EmbedCardEditModal extends SignalWatcher(
   };
 
   private _onReset = () => {
+    const blockComponent = this._blockComponent;
+
+    if (!blockComponent) {
+      this.remove();
+      return;
+    }
+
+    const std = blockComponent.std;
+
     this.model.doc.updateBlock(this.model, { title: null, description: null });
 
-    const blockComponent = this._blockComponent;
     if (
       this.isEmbedLinkedDocModel &&
       blockComponent instanceof EmbedLinkedDocBlockComponent
     ) {
-      const std = blockComponent.std;
-
       blockComponent.refreshData();
 
       notifyLinkedDocClearedAliases(std);
     }
-    blockComponent?.requestUpdate();
+    blockComponent.requestUpdate();
+
+    track(std, this.model, this.viewType, 'ResetedAlias', { control: 'reset' });
 
     this.remove();
   };
 
   private _onSave = () => {
+    const blockComponent = this._blockComponent;
+
+    if (!blockComponent) {
+      this.remove();
+      return;
+    }
+
     const title = this.title$.value.trim();
     if (title.length === 0) {
       toast(this.host, 'Title can not be empty');
       return;
     }
 
+    const std = blockComponent.std;
+
     const description = this.description$.value.trim();
 
-    const props: Partial<BlockProps> = { title };
+    const props: AliasInfo = { title };
     if (description) props.description = description;
-
-    this.model.doc.updateBlock(this.model, props);
-
-    const blockComponent = this._blockComponent;
 
     if (
       this.isEmbedSyncedDocModel &&
       blockComponent instanceof EmbedSyncedDocBlockComponent
     ) {
-      const std = blockComponent.std;
-
-      blockComponent.convertToCard();
+      blockComponent.convertToCard(props);
 
       notifyLinkedDocSwitchedToCard(std);
     } else {
-      blockComponent?.requestUpdate();
+      this.model.doc.updateBlock(this.model, props);
+      blockComponent.requestUpdate();
     }
+
+    track(std, this.model, this.viewType, 'SavedAlias', { control: 'save' });
 
     this.remove();
   };
@@ -382,11 +407,15 @@ export class EmbedCardEditModal extends SignalWatcher(
 
   @query('.input.title')
   accessor titleInput!: HTMLInputElement;
+
+  @property({ attribute: false })
+  accessor viewType!: string;
 }
 
 export function toggleEmbedCardEditModal(
   host: EditorHost,
   embedCardModel: LinkableEmbedModel,
+  viewType: string,
   originalDocInfo?: AliasInfo
 ) {
   document.body.querySelector('embed-card-edit-modal')?.remove();
@@ -394,6 +423,7 @@ export function toggleEmbedCardEditModal(
   const embedCardEditModal = new EmbedCardEditModal();
   embedCardEditModal.model = embedCardModel;
   embedCardEditModal.host = host;
+  embedCardEditModal.viewType = viewType;
   embedCardEditModal.originalDocInfo = originalDocInfo;
   document.body.append(embedCardEditModal);
 }
@@ -402,4 +432,21 @@ declare global {
   interface HTMLElementTagNameMap {
     'embed-card-edit-modal': EmbedCardEditModal;
   }
+}
+
+function track(
+  std: BlockStdScope,
+  model: LinkableEmbedModel,
+  viewType: string,
+  event: LinkEventType,
+  props: Partial<TelemetryEvent>
+) {
+  std.getOptional(TelemetryProvider)?.track(event, {
+    segment: 'toolbar',
+    page: 'doc editor',
+    module: 'embed card edit popup',
+    type: `${viewType} view`,
+    category: isInternalEmbedModel(model) ? 'linked doc' : 'link',
+    ...props,
+  });
 }

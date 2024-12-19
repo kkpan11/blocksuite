@@ -1,5 +1,3 @@
-import type { GfxToolsMap, GfxToolsOption } from '@blocksuite/block-std/gfx';
-
 import {
   LayoutType,
   MindmapElementModel,
@@ -17,6 +15,11 @@ import {
   TelemetryProvider,
 } from '@blocksuite/affine-shared/services';
 import { matchFlavours } from '@blocksuite/affine-shared/utils';
+import {
+  type GfxToolsMap,
+  type GfxToolsOption,
+  isGfxGroupCompatibleModel,
+} from '@blocksuite/block-std/gfx';
 import { IS_MAC } from '@blocksuite/global/env';
 import { Bound } from '@blocksuite/global/utils';
 
@@ -25,7 +28,7 @@ import type { EdgelessRootBlockComponent } from './edgeless-root-block.js';
 import {
   getNearestTranslation,
   isElementOutsideViewport,
-  isSelectSingleMindMap,
+  isSingleMindMapNode,
 } from '../../_common/edgeless/mindmap/index.js';
 import { LassoMode } from '../../_common/types.js';
 import { EdgelessTextBlockComponent } from '../../edgeless-text-block/edgeless-text-block.js';
@@ -221,7 +224,8 @@ export class EdgelessPageKeyboardManager extends PageKeyboardManager {
           const { selection } = this.rootComponent.service;
           if (
             selection.selectedElements.length === 1 &&
-            selection.firstElement instanceof GroupElementModel
+            selection.firstElement instanceof GroupElementModel &&
+            !selection.firstElement.isLocked()
           ) {
             ctx.get('keyboardState').event.preventDefault();
             rootComponent.service.ungroup(selection.firstElement);
@@ -336,6 +340,8 @@ export class EdgelessPageKeyboardManager extends PageKeyboardManager {
             const element = elements[0];
             const id = element.id;
 
+            if (element.isLocked()) return;
+
             if (element instanceof ConnectorElementModel) {
               selection.set({
                 elements: [id],
@@ -361,7 +367,7 @@ export class EdgelessPageKeyboardManager extends PageKeyboardManager {
             }
           }
 
-          if (!isSelectSingleMindMap(elements)) {
+          if (!isSingleMindMapNode(elements)) {
             return;
           }
 
@@ -385,19 +391,27 @@ export class EdgelessPageKeyboardManager extends PageKeyboardManager {
             }
           });
         },
-        Tab: () => {
+        Tab: ctx => {
+          ctx.get('defaultState').event.preventDefault();
+
           const { service } = rootComponent;
           const selection = service.selection;
           const elements = selection.selectedElements;
 
-          if (!isSelectSingleMindMap(elements)) {
+          if (!isSingleMindMapNode(elements)) {
             return;
           }
 
           const mindmap = elements[0].group as MindmapElementModel;
+          if (mindmap.isLocked()) return;
+
           const node = mindmap.getNode(elements[0].id)!;
           const id = mindmap.addNode(node.id);
           const target = service.getElementById(id) as ShapeElementModel;
+
+          if (node.detail.collapsed) {
+            mindmap.toggleCollapse(node, { layout: true });
+          }
 
           requestAnimationFrame(() => {
             mountShapeTextEditor(target, rootComponent);
@@ -467,7 +481,7 @@ export class EdgelessPageKeyboardManager extends PageKeyboardManager {
           const elements = selection.selectedElements;
           const doc = this.rootComponent.doc;
 
-          if (isSelectSingleMindMap(elements)) {
+          if (isSingleMindMapNode(elements)) {
             const target = service.getElementById(
               elements[0].id
             ) as ShapeElementModel;
@@ -507,8 +521,9 @@ export class EdgelessPageKeyboardManager extends PageKeyboardManager {
     }
 
     const selectedElements = edgeless.service.selection.selectedElements;
+    if (selectedElements.some(e => e.isLocked())) return;
 
-    if (isSelectSingleMindMap(selectedElements)) {
+    if (isSingleMindMapNode(selectedElements)) {
       const node = selectedElements[0];
       const mindmap = node.group as MindmapElementModel;
       const focusNode =
@@ -607,7 +622,16 @@ export class EdgelessPageKeyboardManager extends PageKeyboardManager {
       return;
     }
 
-    selectedElements.forEach(element => {
+    if (selectedElements.some(e => e.isLocked())) return;
+
+    const movedElements = new Set([
+      ...selectedElements,
+      ...selectedElements
+        .map(el => (isGfxGroupCompatibleModel(el) ? el.descendantElements : []))
+        .flat(),
+    ]);
+
+    movedElements.forEach(element => {
       const bound = Bound.deserialize(element.xywh).clone();
 
       switch (key) {
