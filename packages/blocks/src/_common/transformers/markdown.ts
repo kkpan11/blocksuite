@@ -40,7 +40,7 @@ async function exportDoc(doc: Doc) {
     collection: doc.collection,
     middlewares: [docLinkBaseURLMiddleware, titleMiddleware],
   });
-  const snapshot = await job.docToSnapshot(doc);
+  const snapshot = job.docToSnapshot(doc);
 
   const adapter = new MarkdownAdapter(job);
   if (!snapshot) {
@@ -88,14 +88,12 @@ async function importMarkdownToBlock({
 }: ImportMarkdownToBlockOptions) {
   const job = new Job({
     collection: doc.collection,
-    middlewares: [defaultImageProxyMiddleware],
+    middlewares: [defaultImageProxyMiddleware, docLinkBaseURLMiddleware],
   });
   const adapter = new MarkdownAdapter(job);
   const snapshot = await adapter.toSliceSnapshot({
     file: markdown,
     assets: job.assetsManager,
-    pageVersion: doc.collection.meta.pageVersion!,
-    workspaceVersion: doc.collection.meta.workspaceVersion!,
     workspaceId: doc.collection.id,
     pageId: doc.id,
   });
@@ -126,7 +124,11 @@ async function importMarkdownToDoc({
 }: ImportMarkdownToDocOptions) {
   const job = new Job({
     collection,
-    middlewares: [defaultImageProxyMiddleware, fileNameMiddleware(fileName)],
+    middlewares: [
+      defaultImageProxyMiddleware,
+      fileNameMiddleware(fileName),
+      docLinkBaseURLMiddleware,
+    ],
   });
   const mdAdapter = new MarkdownAdapter(job);
   const page = await mdAdapter.toDoc({
@@ -183,6 +185,7 @@ async function importMarkdownZip({
         middlewares: [
           defaultImageProxyMiddleware,
           fileNameMiddleware(fileNameWithoutExt),
+          docLinkBaseURLMiddleware,
         ],
       });
       const assets = job.assets;

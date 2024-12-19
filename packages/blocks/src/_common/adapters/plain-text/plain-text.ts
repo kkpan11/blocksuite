@@ -40,8 +40,6 @@ type PlainTextToSliceSnapshotPayload = {
   file: PlainText;
   assets?: AssetsManager;
   blockVersions: Record<string, number>;
-  pageVersion: number;
-  workspaceVersion: number;
   workspaceId: string;
   pageId: string;
 };
@@ -67,7 +65,7 @@ export class PlainTextAdapter extends BaseAdapter<PlainText> {
     const textBuffer: TextBuffer = {
       content: '',
     };
-    const walker = new ASTWalker<BlockSnapshot, never>();
+    const walker = new ASTWalker<BlockSnapshot, TextBuffer>();
     walker.setONodeTypeGuard(
       (node): node is BlockSnapshot =>
         BlockSnapshotSchema.safeParse(node).success
@@ -75,7 +73,7 @@ export class PlainTextAdapter extends BaseAdapter<PlainText> {
     walker.setEnter(async (o, context) => {
       for (const matcher of this.blockMatchers) {
         if (matcher.fromMatch(o)) {
-          const adapterContext: AdapterContext<BlockSnapshot> = {
+          const adapterContext: AdapterContext<BlockSnapshot, TextBuffer> = {
             walker,
             walkerContext: context,
             configs: this.configs,
@@ -90,7 +88,7 @@ export class PlainTextAdapter extends BaseAdapter<PlainText> {
     walker.setLeave(async (o, context) => {
       for (const matcher of this.blockMatchers) {
         if (matcher.fromMatch(o)) {
-          const adapterContext: AdapterContext<BlockSnapshot, never> = {
+          const adapterContext: AdapterContext<BlockSnapshot, TextBuffer> = {
             walker,
             walkerContext: context,
             configs: this.configs,
@@ -300,8 +298,6 @@ export class PlainTextAdapter extends BaseAdapter<PlainText> {
     return {
       type: 'slice',
       content: [contentSlice],
-      pageVersion: payload.pageVersion,
-      workspaceVersion: payload.workspaceVersion,
       workspaceId: payload.workspaceId,
       pageId: payload.pageId,
     };

@@ -37,6 +37,14 @@ export abstract class Overlay extends Extension {
 
   clear() {}
 
+  dispose() {}
+
+  refresh() {
+    if (this._renderer) {
+      this._renderer.refresh();
+    }
+  }
+
   abstract render(ctx: CanvasRenderingContext2D, rc: RoughCanvas): void;
 
   setRenderer(renderer: CanvasRenderer | null) {

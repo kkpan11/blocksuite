@@ -2,6 +2,7 @@ import {
   DEFAULT_NOTE_HEIGHT,
   DEFAULT_NOTE_WIDTH,
 } from '@blocksuite/affine-model';
+import { Bound } from '@blocksuite/global/utils';
 import { expect, type Page } from '@playwright/test';
 
 import { clickView } from '../../utils/actions/click.js';
@@ -13,6 +14,8 @@ import {
   dragBetweenViewCoords,
   edgelessCommonSetup,
   getFirstContainerId,
+  getIds,
+  getSelectedBound,
   getSelectedIds,
   pickColorAtPoints,
   setEdgelessTool,
@@ -51,7 +54,7 @@ test.beforeEach(async ({ page }) => {
   await zoomResetByKeyboard(page);
 });
 
-test.describe('add a frame then drag to move', () => {
+test.describe('add a frame', () => {
   const createThreeShapesAndSelectTowShape = async (page: Page) => {
     await createShapeElement(page, [0, 0], [100, 100], Shape.Square);
     await createShapeElement(page, [100, 0], [200, 100], Shape.Square);
@@ -66,7 +69,7 @@ test.describe('add a frame then drag to move', () => {
     await page.keyboard.press('f');
 
     await expect(page.locator('affine-frame')).toHaveCount(1);
-    await assertSelectedBound(page, [-300, -270, 800, 640]);
+    await assertSelectedBound(page, [-40, -40, 280, 180]);
 
     const frameId = await getFirstContainerId(page);
     await assertContainerChildCount(page, frameId, 2);
@@ -77,7 +80,7 @@ test.describe('add a frame then drag to move', () => {
     await triggerComponentToolbarAction(page, 'addFrame');
 
     await expect(page.locator('affine-frame')).toHaveCount(1);
-    await assertSelectedBound(page, [-300, -270, 800, 640]);
+    await assertSelectedBound(page, [-40, -40, 280, 180]);
 
     const frameId = await getFirstContainerId(page);
     await assertContainerChildCount(page, frameId, 2);
@@ -90,7 +93,7 @@ test.describe('add a frame then drag to move', () => {
     await triggerComponentToolbarAction(page, 'createFrameOnMoreOption');
 
     await expect(page.locator('affine-frame')).toHaveCount(1);
-    await assertSelectedBound(page, [-300, -270, 800, 640]);
+    await assertSelectedBound(page, [-40, -40, 280, 180]);
 
     const frameId = await getFirstContainerId(page);
     await assertContainerChildCount(page, frameId, 2);
@@ -123,6 +126,19 @@ test.describe('add a frame then drag to move', () => {
 
     const frameId = await getFirstContainerId(page);
     await assertContainerChildCount(page, frameId, 2);
+  });
+
+  test('add inner frame', async ({ page }) => {
+    await createFrame(page, [50, 50], [450, 450]);
+    await createShapeElement(page, [200, 200], [300, 300], Shape.Square);
+    await pressEscape(page);
+
+    await shiftClickView(page, [250, 250]);
+    await page.keyboard.press('f');
+    const innerFrameBound = await getSelectedBound(page);
+    expect(
+      new Bound(50, 50, 400, 400).contains(Bound.fromXYWH(innerFrameBound))
+    ).toBeTruthy();
   });
 });
 
@@ -344,7 +360,7 @@ test.describe('resize frame then move ', () => {
   });
 });
 
-test('delete frame', async ({ page }) => {
+test('delete frame should also delete its children', async ({ page }) => {
   await createFrame(page, [50, 50], [450, 450]);
   await createShapeElement(page, [200, 200], [300, 300], Shape.Square);
   await pressEscape(page);
@@ -356,6 +372,28 @@ test('delete frame', async ({ page }) => {
   await expect(page.locator('affine-frame')).toHaveCount(0);
 
   await assertCanvasElementsCount(page, 0);
+});
+
+test('delete frame by click ungroup should not delete its children', async ({
+  page,
+}) => {
+  await createFrame(page, [50, 50], [450, 450]);
+  const shapeId = await createShapeElement(
+    page,
+    [200, 200],
+    [300, 300],
+    Shape.Square
+  );
+  await pressEscape(page);
+
+  const frameTitle = page.locator('affine-frame-title');
+  await frameTitle.click();
+  const elementToolbar = page.locator('edgeless-element-toolbar-widget');
+  const ungroupButton = elementToolbar.getByLabel('Ungroup');
+  await ungroupButton.click();
+
+  await assertCanvasElementsCount(page, 1);
+  expect(await getIds(page)).toEqual([shapeId]);
 });
 
 test('outline should keep updated during a new frame created by frame-tool dragging', async ({
