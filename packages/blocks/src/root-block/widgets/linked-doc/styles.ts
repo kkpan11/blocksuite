@@ -29,10 +29,11 @@ export const linkedDocPopoverStyles = css`
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    gap: 4px;
 
     background: ${unsafeCSSVarV2('layer/background/primary')};
     box-shadow: ${unsafeCSSVar('overlayPanelShadow')};
-    border-radius: 8px;
+    border-radius: 4px;
     z-index: var(--affine-z-index-popover);
   }
 
@@ -45,7 +46,7 @@ export const linkedDocPopoverStyles = css`
   .linked-doc-popover .group-title {
     color: var(--affine-text-secondary-color);
     padding: 0 8px;
-    height: 24px;
+    height: 30px;
     font-size: var(--affine-font-xs);
     display: flex;
     align-items: center;
@@ -54,7 +55,6 @@ export const linkedDocPopoverStyles = css`
   }
 
   .linked-doc-popover .divider {
-    margin: 4px -8px;
     border-top: 0.5px solid ${unsafeCSSVarV2('layer/insideBorder/border')};
   }
 
@@ -66,6 +66,7 @@ export const linkedDocPopoverStyles = css`
   .linked-doc-popover .group {
     display: flex;
     flex-direction: column;
+    gap: 4px;
   }
 
   ${scrollbarStyle('.linked-doc-popover')}
@@ -93,7 +94,14 @@ export const mobileLinkedDocMenuStyles = css`
     box-shadow: 0px -3px 10px 0px rgba(0, 0, 0, 0.07);
   }
 
-  ${scrollbarStyle(':host')}
+  :host::-webkit-scrollbar {
+    display: none;
+  }
+
+  .divider {
+    width: 100%;
+    border-top: 0.5px solid ${unsafeCSSVarV2('layer/insideBorder/border')};
+  }
 
   .mobile-linked-doc-menu-item {
     display: flex;
@@ -122,7 +130,7 @@ export const mobileLinkedDocMenuStyles = css`
       text-align: justify;
       text-overflow: ellipsis;
 
-      font-family: 'SF Pro';
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
       font-size: 17px;
       font-style: normal;
       font-weight: 400;

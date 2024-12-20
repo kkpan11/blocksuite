@@ -1,20 +1,16 @@
-import type { IBound } from '@blocksuite/global/utils';
-
 import {
   darkToolbarStyles,
-  EditPropsStore,
   lightToolbarStyles,
+} from '@blocksuite/affine-components/toolbar';
+import {
+  EditPropsStore,
   ThemeProvider,
 } from '@blocksuite/affine-shared/services';
 import {
   requestConnectedFrame,
   stopPropagation,
 } from '@blocksuite/affine-shared/utils';
-import {
-  Bound,
-  getCommonBound,
-  WithDisposable,
-} from '@blocksuite/global/utils';
+import { type Bound, WithDisposable } from '@blocksuite/global/utils';
 import { baseTheme } from '@toeverything/theme';
 import { css, html, LitElement, nothing, unsafeCSS } from 'lit';
 import { property, state } from 'lit/decorators.js';
@@ -23,15 +19,8 @@ import { styleMap } from 'lit/directives/style-map.js';
 import { unsafeSVG } from 'lit/directives/unsafe-svg.js';
 
 import type { EdgelessRootBlockComponent } from '../../../edgeless-root-block.js';
-import type { TemplateJob } from '../../../services/template.js';
 import type { Template } from './template-type.js';
 
-import {
-  createInsertPlaceMiddleware,
-  createRegenerateIndexMiddleware,
-  createStickerMiddleware,
-  replaceIdMiddleware,
-} from '../../../services/template-middlewares.js';
 import { EdgelessDraggableElementController } from '../common/draggable/draggable-element.controller.js';
 import { builtInTemplates } from './builtin-templates.js';
 import { ArrowIcon, defaultPreview } from './icon.js';
@@ -219,43 +208,6 @@ export class EdgelessTemplatePanel extends WithDisposable(LitElement) {
     this.dispatchEvent(new CustomEvent('closepanel'));
   }
 
-  private _createTemplateJob(type: string, center: { x: number; y: number }) {
-    const middlewares: ((job: TemplateJob) => void)[] = [];
-    const service = this.edgeless.service;
-
-    if (type === 'template') {
-      const currentContentBound = getCommonBound(
-        (
-          service.blocks.map(block => Bound.deserialize(block.xywh)) as IBound[]
-        ).concat(service.elements)
-      );
-
-      if (currentContentBound) {
-        currentContentBound.x +=
-          currentContentBound.w + 20 / service.viewport.zoom;
-        middlewares.push(createInsertPlaceMiddleware(currentContentBound));
-      }
-
-      const idxGenerator = service.layer.createIndexGenerator();
-
-      middlewares.push(createRegenerateIndexMiddleware(() => idxGenerator()));
-    }
-
-    if (type === 'sticker') {
-      middlewares.push(
-        createStickerMiddleware(center, () => service.layer.generateIndex())
-      );
-    }
-
-    middlewares.push(replaceIdMiddleware);
-
-    return this.edgeless.service.TemplateJob.create({
-      model: this.edgeless.surfaceBlockModel,
-      type,
-      middlewares,
-    });
-  }
-
   private _fetch(fn: (state: { canceled: boolean }) => Promise<unknown>) {
     if (this._fetchJob) {
       this._fetchJob.cancel();
@@ -330,7 +282,10 @@ export class EdgelessTemplatePanel extends WithDisposable(LitElement) {
       x: bound.x + bound.w / 2,
       y: bound.y + bound.h / 2,
     };
-    const templateJob = this._createTemplateJob(template.type, center);
+    const templateJob = this.edgeless.service.createTemplateJob(
+      template.type,
+      center
+    );
     const service = this.edgeless.service;
 
     try {

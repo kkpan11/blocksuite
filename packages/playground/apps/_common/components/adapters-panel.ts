@@ -7,9 +7,12 @@ import {
   defaultImageProxyMiddleware,
   docLinkBaseURLMiddlewareBuilder,
   embedSyncedDocMiddleware,
-  HtmlAdapter,
-  MarkdownAdapter,
-  PlainTextAdapter,
+  type HtmlAdapter,
+  HtmlAdapterFactoryIdentifier,
+  type MarkdownAdapter,
+  MarkdownAdapterFactoryIdentifier,
+  type PlainTextAdapter,
+  PlainTextAdapterFactoryIdentifier,
   titleMiddleware,
 } from '@blocksuite/blocks';
 import { WithDisposable } from '@blocksuite/global/utils';
@@ -108,29 +111,40 @@ export class AdaptersPanel extends WithDisposable(ShadowlessElement) {
     });
   }
 
-  private async _getDocSnapshot() {
+  private _getDocSnapshot() {
     const job = this._createJob();
-    const result = await job.docToSnapshot(this.doc);
+    const result = job.docToSnapshot(this.doc);
     return result;
   }
 
   private async _getHtmlContent() {
     const job = this._createJob();
-    const htmlAdapter = new HtmlAdapter(job);
+    const htmlAdapterFactory = this.editor.std.provider.get(
+      HtmlAdapterFactoryIdentifier
+    );
+    const htmlAdapter = htmlAdapterFactory.get(job) as HtmlAdapter;
     const result = await htmlAdapter.fromDoc(this.doc);
     return result?.file;
   }
 
   private async _getMarkdownContent() {
     const job = this._createJob();
-    const markdownAdapter = new MarkdownAdapter(job);
+    const markdownAdapterFactory = this.editor.std.provider.get(
+      MarkdownAdapterFactoryIdentifier
+    );
+    const markdownAdapter = markdownAdapterFactory.get(job) as MarkdownAdapter;
     const result = await markdownAdapter.fromDoc(this.doc);
     return result?.file;
   }
 
   private async _getPlainTextContent() {
     const job = this._createJob();
-    const plainTextAdapter = new PlainTextAdapter(job);
+    const plainTextAdapterFactory = this.editor.std.provider.get(
+      PlainTextAdapterFactoryIdentifier
+    );
+    const plainTextAdapter = plainTextAdapterFactory.get(
+      job
+    ) as PlainTextAdapter;
     const result = await plainTextAdapter.fromDoc(this.doc);
     return result?.file;
   }
@@ -147,7 +161,7 @@ export class AdaptersPanel extends WithDisposable(ShadowlessElement) {
         this._plainTextContent = (await this._getPlainTextContent()) || '';
         break;
       case 'snapshot':
-        this._docSnapshot = (await this._getDocSnapshot()) || null;
+        this._docSnapshot = this._getDocSnapshot() || null;
         break;
     }
   }

@@ -23,14 +23,25 @@ export enum DefaultModeDragType {
 export type DragState = {
   movedElements: GfxModel[];
   dragType: DefaultModeDragType;
+  event: PointerEventState;
 };
 
 export class DefaultToolExt {
+  readonly supportedDragTypes: DefaultModeDragType[] = [];
+
   get gfx() {
     return this.defaultTool.gfx;
   }
 
+  get std() {
+    return this.defaultTool.std;
+  }
+
   constructor(protected defaultTool: DefaultTool) {}
+
+  click(_evt: PointerEventState) {}
+
+  dblClick(_evt: PointerEventState) {}
 
   initDrag(_: DragState): {
     dragStart?: (evt: PointerEventState) => void;
@@ -41,6 +52,12 @@ export class DefaultToolExt {
   }
 
   mounted() {}
+
+  pointerDown(_evt: PointerEventState) {}
+
+  pointerMove(_evt: PointerEventState) {}
+
+  pointerUp(_evt: PointerEventState) {}
 
   unmounted() {}
 }

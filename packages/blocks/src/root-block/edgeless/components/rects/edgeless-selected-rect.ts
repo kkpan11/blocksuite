@@ -32,6 +32,7 @@ import {
   ShapeElementModel,
   TextElementModel,
 } from '@blocksuite/affine-model';
+import { unsafeCSSVarV2 } from '@blocksuite/affine-shared/theme';
 import {
   clamp,
   requestThrottledConnectedFrame,
@@ -39,6 +40,7 @@ import {
 } from '@blocksuite/affine-shared/utils';
 import { WidgetComponent } from '@blocksuite/block-std';
 import {
+  type CursorType,
   getTopElements,
   GfxControllerIdentifier,
   GfxExtensionIdentifier,
@@ -148,6 +150,10 @@ export class EdgelessSelectedRectWidget extends WidgetComponent<
       border-width: 2px;
       border-style: solid;
       transform: translate(0, 0) rotate(0);
+    }
+
+    .affine-edgeless-selected-rect[data-locked='true'] {
+      border-color: ${unsafeCSSVarV2('edgeless/lock/locked', '#00000085')};
     }
 
     .affine-edgeless-selected-rect .handle {
@@ -655,7 +661,7 @@ export class EdgelessSelectedRectWidget extends WidgetComponent<
       point?: IVec;
     }
   ) => {
-    let cursor = 'default';
+    let cursor: CursorType = 'default';
 
     if (dragging && options) {
       const { type, target, point } = options;
@@ -665,10 +671,10 @@ export class EdgelessSelectedRectWidget extends WidgetComponent<
           angle = calcAngle(target, point, 45);
         }
         this._cursorRotate += angle || 0;
-        cursor = generateCursorUrl(this._cursorRotate).toString();
+        cursor = generateCursorUrl(this._cursorRotate);
       } else {
         if (this.resizeMode === 'edge') {
-          cursor = 'ew';
+          cursor = 'ew-resize';
         } else if (target && point) {
           const label = getResizeLabel(target);
           const { width, height, left, top } = this._selectedRect;
@@ -697,12 +703,11 @@ export class EdgelessSelectedRectWidget extends WidgetComponent<
           }
           cursor = rotateResizeCursor((angle * Math.PI) / 180);
         }
-        cursor += '-resize';
       }
     } else {
       this._cursorRotate = 0;
     }
-    this.edgelessSlots.cursorUpdated.emit(cursor);
+    this.gfx.cursor$.value = cursor;
   };
 
   private _updateMode = () => {
@@ -1371,39 +1376,43 @@ export class EdgelessSelectedRectWidget extends WidgetComponent<
 
     const hasResizeHandles = !selection.editing && !doc.readonly;
     const inoperable = selection.inoperable;
+    const hasElementLocked = elements.some(element => element.isLocked());
     const handlers = [];
 
     if (!inoperable) {
-      const resizeHandles = hasResizeHandles
-        ? ResizeHandles(
-            resizeMode,
-            (e: PointerEvent, direction: HandleDirection) => {
-              const target = e.target as HTMLElement;
-              if (target.classList.contains('rotate') && !this._canRotate()) {
-                return;
+      const resizeHandles =
+        hasResizeHandles && !hasElementLocked
+          ? ResizeHandles(
+              resizeMode,
+              (e: PointerEvent, direction: HandleDirection) => {
+                const target = e.target as HTMLElement;
+                if (target.classList.contains('rotate') && !this._canRotate()) {
+                  return;
+                }
+                const proportional = elements.some(
+                  el => el instanceof TextElementModel
+                );
+                _resizeManager.onPointerDown(e, direction, proportional);
+              },
+              (
+                dragging: boolean,
+                options?: {
+                  type: 'resize' | 'rotate';
+                  angle?: number;
+                  target?: HTMLElement;
+                  point?: IVec;
+                }
+              ) => {
+                if (!this._canRotate() && options?.type === 'rotate') return;
+                _updateCursor(dragging, options);
               }
-              const proportional = elements.some(
-                el => el instanceof TextElementModel
-              );
-              _resizeManager.onPointerDown(e, direction, proportional);
-            },
-            (
-              dragging: boolean,
-              options?: {
-                type: 'resize' | 'rotate';
-                angle?: number;
-                target?: HTMLElement;
-                point?: IVec;
-              }
-            ) => {
-              if (!this._canRotate() && options?.type === 'rotate') return;
-              _updateCursor(dragging, options);
-            }
-          )
-        : nothing;
+            )
+          : nothing;
 
       const connectorHandle =
-        elements.length === 1 && elements[0] instanceof ConnectorElementModel
+        elements.length === 1 &&
+        elements[0] instanceof ConnectorElementModel &&
+        !elements[0].isLocked()
           ? html`
               <edgeless-connector-handle
                 .connector=${elements[0]}
@@ -1494,6 +1503,7 @@ export class EdgelessSelectedRectWidget extends WidgetComponent<
         data-mode=${this._mode}
         data-scale-percent=${ifDefined(this._scalePercent)}
         data-scale-direction=${ifDefined(this._scaleDirection)}
+        data-locked=${hasElementLocked}
       >
         ${handlers}
       </div>

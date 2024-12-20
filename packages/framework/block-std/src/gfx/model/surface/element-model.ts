@@ -1,5 +1,9 @@
-import type { IVec, SerializedXYWH, XYWH } from '@blocksuite/global/utils';
-
+import {
+  type IVec,
+  type SerializedXYWH,
+  Slot,
+  type XYWH,
+} from '@blocksuite/global/utils';
 import {
   Bound,
   deserializeXYWH,
@@ -30,6 +34,11 @@ import type { SurfaceBlockModel } from './surface-model.js';
 import {
   descendantElementsImpl,
   hasDescendantElementImpl,
+  isLockedByAncestorImpl,
+  isLockedBySelfImpl,
+  isLockedImpl,
+  lockElementImpl,
+  unlockElementImpl,
 } from '../../../utils/tree.js';
 import { gfxGroupCompatibleSymbol } from '../base.js';
 import {
@@ -45,6 +54,7 @@ import {
 export type BaseElementProps = {
   index: string;
   seed: number;
+  lockedBySelf?: boolean;
 };
 
 export type SerializedElement = Record<string, unknown> & {
@@ -52,6 +62,7 @@ export type SerializedElement = Record<string, unknown> & {
   xywh: SerializedXYWH;
   id: string;
   index: string;
+  lockedBySelf?: boolean;
   props: Record<string, unknown>;
 };
 export abstract class GfxPrimitiveElementModel<
@@ -78,6 +89,8 @@ export abstract class GfxPrimitiveElementModel<
   protected _preserved = new Map<string, unknown>();
 
   protected _stashed: Map<keyof Props | string, unknown>;
+
+  propsUpdated = new Slot<{ key: string }>();
 
   abstract rotate: number;
 
@@ -129,6 +142,9 @@ export abstract class GfxPrimitiveElementModel<
     return this.surface.getGroup(this.id);
   }
 
+  /**
+   * Return the ancestor elements in order from the most recent to the earliest.
+   */
   get groups(): GfxGroupModel[] {
     return this.surface.getGroups(this.id);
   }
@@ -143,6 +159,10 @@ export abstract class GfxPrimitiveElementModel<
 
   get isConnected() {
     return this.surface.hasElementById(this.id);
+  }
+
+  get responseBound() {
+    return this.elementBound.expand(this.responseExtension);
   }
 
   abstract get type(): string;
@@ -214,10 +234,11 @@ export abstract class GfxPrimitiveElementModel<
   includesPoint(
     x: number,
     y: number,
-    _: PointTestOptions,
+    opt: PointTestOptions,
     __: EditorHost
   ): boolean {
-    return this.elementBound.isPointInBound([x, y]);
+    const bound = opt.useElementBound ? this.elementBound : this.responseBound;
+    return bound.isPointInBound([x, y]);
   }
 
   intersectsBound(bound: Bound): boolean {
@@ -229,7 +250,28 @@ export abstract class GfxPrimitiveElementModel<
     );
   }
 
+  isLocked(): boolean {
+    return isLockedImpl(this);
+  }
+
+  isLockedByAncestor(): boolean {
+    return isLockedByAncestorImpl(this);
+  }
+
+  isLockedBySelf(): boolean {
+    return isLockedBySelfImpl(this);
+  }
+
+  lock() {
+    lockElementImpl(this.surface.doc, this);
+  }
+
   onCreated() {}
+
+  onDestroyed() {
+    this._disposable.dispose();
+    this.propsUpdated.dispose();
+  }
 
   pop(prop: keyof Props | string) {
     if (!this._stashed.has(prop)) {
@@ -303,6 +345,10 @@ export abstract class GfxPrimitiveElementModel<
     });
   }
 
+  unlock() {
+    unlockElementImpl(this.surface.doc, this);
+  }
+
   @local()
   accessor display: boolean = true;
 
@@ -318,11 +364,20 @@ export abstract class GfxPrimitiveElementModel<
   @local()
   accessor externalXYWH: SerializedXYWH | undefined = undefined;
 
+  @field(false)
+  accessor hidden: boolean = false;
+
   @field()
   accessor index!: string;
 
+  @field()
+  accessor lockedBySelf: boolean | undefined = false;
+
   @local()
   accessor opacity: number = 1;
+
+  @local()
+  accessor responseExtension: [number, number] = [0, 0];
 
   @field()
   accessor seed!: number;
@@ -401,6 +456,10 @@ export abstract class GfxGroupLikeElementModel<
     let bound: Bound | undefined;
 
     this.childElements.forEach(child => {
+      if (child instanceof GfxPrimitiveElementModel && child.hidden) {
+        return;
+      }
+
       bound = bound ? bound.unite(child.elementBound) : child.elementBound;
     });
 
@@ -419,21 +478,21 @@ export abstract class GfxGroupLikeElementModel<
    * The actual field that stores the children of the group.
    * It should be a ymap decorated with `@field`.
    */
-  hasChild(element: GfxModel) {
-    return this.childElements.includes(element);
+  hasChild(element: GfxCompatibleInterface) {
+    return this.childElements.includes(element as GfxModel);
   }
 
   /**
    * Check if the group has the given descendant.
    */
-  hasDescendant(element: GfxModel): boolean {
+  hasDescendant(element: GfxCompatibleInterface): boolean {
     return hasDescendantElementImpl(this, element);
   }
 
   /**
    * Remove the child from the group
    */
-  abstract removeChild(element: GfxModel): void;
+  abstract removeChild(element: GfxCompatibleInterface): void;
 
   /**
    * Set the new value of the childIds
@@ -453,44 +512,6 @@ export abstract class GfxGroupLikeElementModel<
       },
       local: fromLocal,
     });
-  }
-}
-
-export abstract class GfxLocalElementModel {
-  private _lastXYWH: SerializedXYWH = '[0,0,-1,-1]';
-
-  protected _local = new Map<string | symbol, unknown>();
-
-  opacity: number = 1;
-
-  abstract rotate: number;
-
-  abstract xywh: SerializedXYWH;
-
-  get deserializedXYWH() {
-    if (this.xywh !== this._lastXYWH) {
-      const xywh = this.xywh;
-      this._local.set('deserializedXYWH', deserializeXYWH(xywh));
-      this._lastXYWH = xywh;
-    }
-
-    return this._local.get('deserializedXYWH') as XYWH;
-  }
-
-  get h() {
-    return this.deserializedXYWH[3];
-  }
-
-  get w() {
-    return this.deserializedXYWH[2];
-  }
-
-  get x() {
-    return this.deserializedXYWH[0];
-  }
-
-  get y() {
-    return this.deserializedXYWH[1];
   }
 }
 
@@ -528,6 +549,9 @@ export function syncElementFromY(
 
         model['_preserved'].set(key, value);
         props[key] = value;
+        oldValues[key] = oldValue;
+      } else {
+        model['_preserved'].delete(key);
         oldValues[key] = oldValue;
       }
     });

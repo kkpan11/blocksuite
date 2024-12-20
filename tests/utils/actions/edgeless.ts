@@ -13,6 +13,7 @@ import { dragBetweenCoords } from './drag.js';
 import {
   pressBackspace,
   pressEnter,
+  pressEscape,
   selectAllByKeyboard,
   SHIFT_KEY,
   SHORT_KEY,
@@ -125,6 +126,17 @@ export async function switchEditorMode(page: Page) {
   await page.click('sl-tooltip[content="Switch Editor"]');
   // FIXME: listen to editor loaded event
   await waitNextFrame(page);
+}
+
+export async function switchMultipleEditorsMode(page: Page) {
+  await page.evaluate(() => {
+    const containers = document.querySelectorAll('affine-editor-container');
+    const mode = containers[0].mode === 'edgeless' ? 'page' : 'edgeless';
+
+    containers.forEach(container => {
+      container.mode = mode;
+    });
+  });
 }
 
 export async function switchEditorEmbedMode(page: Page) {
@@ -517,6 +529,21 @@ export async function addBasicFrameElement(
 ) {
   await setEdgelessTool(page, 'frame');
   await dragBetweenCoords(page, start, end, { steps: 50 });
+}
+
+export async function addBasicEdgelessText(
+  page: Page,
+  text: string,
+  x: number,
+  y: number
+) {
+  await setEdgelessTool(page, 'text');
+  await page.mouse.click(x, y);
+  await page.locator('affine-edgeless-text').waitFor({ state: 'visible' });
+  await waitNextFrame(page, 100);
+  await type(page, text, 20);
+  await pressEscape(page, 2);
+  await setEdgelessTool(page, 'default');
 }
 
 export async function addNote(page: Page, text: string, x: number, y: number) {
@@ -1760,8 +1787,8 @@ export async function getSortedIdsInViewport(page: Page) {
     if (!container) throw new Error('container not found');
     const { service } = container;
     return service.gfx.grid
-      .search(service.viewport.viewportBounds, undefined, {
-        filter: model => !('flavour' in model),
+      .search(service.viewport.viewportBounds, {
+        filter: ['canvas'],
       })
       .map(e => e.id);
   });
@@ -1835,15 +1862,32 @@ export async function createFrameElement(
 export async function createBrushElement(
   page: Page,
   coord1: number[],
-  coord2: number[]
+  coord2: number[],
+  auto = true
 ) {
   const start = await toViewCoord(page, coord1);
   const end = await toViewCoord(page, coord2);
   await addBasicBrushElement(
     page,
     { x: start[0], y: start[1] },
-    { x: end[0], y: end[1] }
+    { x: end[0], y: end[1] },
+    auto
   );
+}
+
+export async function createEdgelessText(
+  page: Page,
+  coord: number[],
+  text = 'text'
+) {
+  const position = await toViewCoord(page, coord);
+  await addBasicEdgelessText(page, text, position[0], position[1]);
+}
+
+export async function createMindmap(page: Page, coord: number[]) {
+  const position = await toViewCoord(page, coord);
+  await page.keyboard.press('m');
+  await page.mouse.click(position[0], position[1]);
 }
 
 export async function createNote(
